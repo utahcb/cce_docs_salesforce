@@ -37,7 +37,7 @@ jobs:
           
           # 3D visualization
           pip install three.py plotly pyvista vtk
-          pip install blender-python unity-python-api
+          pip install unity-python-api bpy
           
           # Web experience
           pip install streamlit dash fastapi
