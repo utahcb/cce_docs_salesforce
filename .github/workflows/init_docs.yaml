@@ -1,0 +1,59 @@
+name: Prep MkDocs Documentation
+
+on:
+  workflow_dispatch:
+    inputs:
+      mkdocs_version:
+        description: 'MkDocs version to use (leave blank for latest)'
+        required: false
+        default: ''
+
+jobs:
+  prep-mkdocs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install MkDocs
+        run: |
+          if [ -z "${{ github.event.inputs.mkdocs_version }}" ]; then
+            pip install mkdocs
+          else
+            pip install mkdocs==${{ github.event.inputs.mkdocs_version }}
+          fi
+
+      - name: Install MkDocs Material (optional, for better themes)
+        run: pip install mkdocs-material
+
+      - name: Initialize mkdocs.yml if needed
+        run: |
+          if [ ! -f mkdocs.yml ]; then
+            mkdocs new .
+            echo "# Documentation initialized with MkDocs." > docs/index.md
+          fi
+
+      - name: Ensure docs directory exists
+        run: mkdir -p docs
+
+      - name: Build the static site
+        run: mkdocs build
+
+      - name: Upload site as artifact (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mkdocs-site
+          path: site
+
+      - name: Print next steps
+        run: |
+          echo "MkDocs has been initialized and a static site has been generated in the 'site' directory."
+          echo "You can deploy this to GitHub Pages or another static web host."
