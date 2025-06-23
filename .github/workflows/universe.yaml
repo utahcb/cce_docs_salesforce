@@ -1,0 +1,205 @@
+name: "Salesforce Universe - 3D Interactive Org Documentation"
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'  # Weekly universe update
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Documentation mode'
+        required: true
+        default: 'full-universe'
+        type: choice
+        options:
+          - full-universe
+          - quick-tour
+          - vr-experience
+          - time-machine
+
+jobs:
+  create-salesforce-universe:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python with 3D Libraries
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Universe Dependencies
+        run: |
+          # Core dependencies
+          pip install langchain openai anthropic
+          pip install simple-salesforce pandas numpy
+          
+          # 3D visualization
+          pip install three.py plotly pyvista vtk
+          pip install blender-python unity-python-api
+          
+          # Web experience
+          pip install streamlit dash fastapi
+          pip install websockets asyncio
+          
+          # Audio generation for tour guide
+          pip install elevenlabs gtts pydub
+          
+          # Animation & physics
+          pip install pymunk networkx scipy
+
+      - name: Set up Node.js for Three.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Three.js Dependencies
+        run: |
+          npm install three @react-three/fiber @react-three/drei
+          npm install react react-dom vite
+          npm install gsap leva react-spring
+
+      - name: Authenticate to Salesforce
+        env:
+          SFDX_CLIENT_ID: ${{ secrets.SFDX_CLIENT_ID }}
+          SFDX_HUB_KEY: ${{ secrets.SFDX_HUB_KEY }}
+          SFDX_HUB_USERNAME: ${{ secrets.SFDX_HUB_USERNAME }}
+        run: |
+          echo "${SFDX_HUB_KEY}" > server.key
+          npx sfdx auth:jwt:grant --clientid $SFDX_CLIENT_ID --jwtkeyfile server.key --username $SFDX_HUB_USERNAME -a UniverseOrg
+
+      - name: Extract Org Metadata & History
+        run: |
+          # Get current state
+          python .github/universe_docs/extract_org_data.py \
+            --org UniverseOrg \
+            --include-history \
+            --output universe_data/org_snapshot.json
+          
+          # Get setup audit trail for storytelling
+          python .github/universe_docs/extract_audit_trail.py \
+            --org UniverseOrg \
+            --days 365 \
+            --output universe_data/org_history.json
+
+      - name: Generate Universe Layout with AI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python .github/universe_docs/ai_universe_architect.py \
+            --org-data universe_data/org_snapshot.json \
+            --history universe_data/org_history.json \
+            --output universe_data/universe_layout.json
+
+      - name: Create 3D Universe Model
+        run: |
+          python .github/universe_docs/create_3d_universe.py \
+            --layout universe_data/universe_layout.json \
+            --output models/salesforce_universe.gltf \
+            --style cyberpunk
+
+      - name: Generate AI Tour Guide Script
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python .github/universe_docs/generate_tour_script.py \
+            --universe universe_data/universe_layout.json \
+            --history universe_data/org_history.json \
+            --personality "wise space captain" \
+            --output tour/tour_script.json
+
+      - name: Create Audio Narration
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+        run: |
+          python .github/universe_docs/generate_tour_audio.py \
+            --script tour/tour_script.json \
+            --voice "Morgan Freeman-esque" \
+            --output tour/audio_files/
+
+      - name: Build Interactive Web Experience
+        run: |
+          # Generate React Three.js app
+          node .github/universe_docs/build_universe_app.js \
+            --model models/salesforce_universe.gltf \
+            --tour tour/tour_script.json \
+            --audio tour/audio_files/ \
+            --output universe_app/
+
+      - name: Add Time Travel Feature
+        if: github.event.inputs.mode == 'time-machine' || github.event.inputs.mode == 'full-universe'
+        run: |
+          python .github/universe_docs/create_time_machine.py \
+            --history universe_data/org_history.json \
+            --universe models/salesforce_universe.gltf \
+            --output universe_app/time_machine/
+
+      - name: Generate VR Experience
+        if: github.event.inputs.mode == 'vr-experience' || github.event.inputs.mode == 'full-universe'
+        run: |
+          python .github/universe_docs/generate_vr_experience.py \
+            --universe models/salesforce_universe.gltf \
+            --tour tour/tour_script.json \
+            --output universe_app/vr/
+
+      - name: Create Universe Statistics Dashboard
+        run: |
+          python .github/universe_docs/generate_stats_dashboard.py \
+            --universe universe_data/universe_layout.json \
+            --output universe_app/dashboard.html
+
+      - name: Build and Deploy Universe
+        run: |
+          cd universe_app
+          npm run build
+          
+          # Add custom loading screen
+          cp ../.github/universe_docs/assets/loading_screen.html dist/
+          
+          # Add Easter eggs
+          python ../.github/universe_docs/add_easter_eggs.py --app dist/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./universe_app/dist
+          cname: universe.${{ github.repository_owner }}.dev
+
+      - name: Generate Shareable Universe Card
+        run: |
+          python .github/universe_docs/generate_universe_card.py \
+            --universe universe_data/universe_layout.json \
+            --stats universe_app/dashboard.html \
+            --output universe_card.png
+
+      - name: Create Universe Documentation PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create stunning README with preview
+          python .github/universe_docs/generate_universe_readme.py \
+            --url https://universe.${{ github.repository_owner }}.dev \
+            --preview universe_card.png \
+            --stats universe_data/universe_layout.json \
+            --output README_UNIVERSE.md
+          
+          git config user.name "Universe Documentation Bot"
+          git config user.email "universe@${{ github.repository_owner }}.com"
+          git add README_UNIVERSE.md universe_card.png
+          git commit -m "🌌 Updated Salesforce Universe Documentation - $(date +'%B %d, %Y')"
+          git push
+
+      - name: Send Universe Launch Notification
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        run: |
+          python .github/universe_docs/send_launch_notification.py \
+            --url https://universe.${{ github.repository_owner }}.dev \
+            --preview universe_card.png \
+            --fun-fact "$(python .github/universe_docs/generate_fun_fact.py universe_data/universe_layout.json)"
+
+      - name: Clean up
+        if: always()
+        run: rm -f server.key
